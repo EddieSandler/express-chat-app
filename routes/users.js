@@ -1,47 +1,92 @@
-const express = require("express");
-const router = new express.Router();
+const Router = require("express").Router;
+const router = new Router();
+
+const Message = require("../models/message");
+const {ensureLoggedIn} = require("../middleware/auth");
 const ExpressError = require("../expressError");
-const db = require("../db");
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
-const { BCRYPT_WORK_FACTOR, SECRET_KEY } = require("../config");
-const { ensureLoggedIn, ensureAdmin } = require("../middleware/auth");
 
-
-/** GET / - get list of users.
+/** get detail of message.
  *
- * => {users: [{username, first_name, last_name, phone}, ...]}
+ * => {message: {id,
+ *               body,
+ *               sent_at,
+ *               read_at,
+ *               from_user: {username, first_name, last_name, phone},
+ *               to_user: {username, first_name, last_name, phone}}
  *
- **/
-
-
-/** GET /:username - get detail of users.
- *
- * => {user: {username, first_name, last_name, phone, join_at, last_login_at}}
+ * Make sure that the currently-logged-in users is either the to or from user.
  *
  **/
 
+router.get("/:id", ensureLoggedIn, async function (req, res, next) {
+  try {
+    let username = req.user.username;
+    let msg = await Message.get(req.params.id);
 
-/** GET /:username/to - get messages to user
+    if (msg.to_user.username !== username && msg.from_user.username !== username) {
+      throw new ExpressError("Cannot read this message", 401);
+    }
+
+    return res.json({message: msg});
+  }
+
+  catch (err) {
+    return next(err);
+  }
+});
+
+
+/** post message.
  *
- * => {messages: [{id,
- *                 body,
- *                 sent_at,
- *                 read_at,
- *                 from_user: {username, first_name, last_name, phone}}, ...]}
+ * {to_username, body} =>
+ *   {message: {id, from_username, to_username, body, sent_at}}
+ *
+ * Make sure that the currently-logged-in users is either the to or from user.
  *
  **/
 
+router.post("/", ensureLoggedIn, async function (req, res, next) {
+  try {
+    let msg = await Message.create({
+      from_username: req.user.username,
+      to_username: req.body.to_username,
+      body: req.body.body
+    });
 
-/** GET /:username/from - get messages from user
+    return res.json({message: msg});
+  }
+
+  catch (err) {
+    return next(err);
+  }
+});
+
+
+/** mark message as read:
  *
- * => {messages: [{id,
- *                 body,
- *                 sent_at,
- *                 read_at,
- *                 to_user: {username, first_name, last_name, phone}}, ...]}
+ *  => {message: {id, read_at}}
+ *
+ * Make sure that the only the intended recipient can mark as read.
  *
  **/
+
+router.post("/:id/read", ensureLoggedIn, async function (req, res, next) {
+  try {
+    let username = req.user.username;
+    let msg = await Message.get(req.params.id);
+
+    if (msg.to_user.username !== username) {
+      throw new ExpressError("Cannot set this message to read", 401);
+    }
+    let message = await Message.markRead(req.params.id);
+
+    return res.json({message});
+  }
+
+  catch (err) {
+    return next(err);
+  }
+});
 
 
 module.exports = router;

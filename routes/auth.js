@@ -5,11 +5,12 @@ const db = require("../db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { BCRYPT_WORK_FACTOR, SECRET_KEY } = require("../config");
-const { ensureLoggedIn, ensureAdmin } = require("../middleware/auth");
 
-router.get('/eddie', (req, res, next) => {
-  res.send("APP IS WORKING!!!")
-})
+const User = require("../models/user");
+
+const { use } = require("../app");
+
+
 
 
 /** POST /login - login: {username, password} => {token}
@@ -17,7 +18,23 @@ router.get('/eddie', (req, res, next) => {
  * Make sure to update their last-login!
  *
  **/
+router.post('/login', async (req, res, next) => {
+  //get username and password form request body
+  try {
+    const { username, password } = req.body;
+    if (await User.authenticate(username, password)) {
+      let token = jwt.sign({ username }, SECRET_KEY);
+      User.updateLoginTimestamp(username);
+      return res.json({ token });
+    } else {
+      throw new ExpressError("Invalid username/password", 400);
 
+    }
+
+  } catch (e) {
+    return next(e);
+  }
+});
 
 /** POST /register - register user: registers, logs in, and returns token.
  *
@@ -25,5 +42,17 @@ router.get('/eddie', (req, res, next) => {
  *
  *  Make sure to update their last-login!
  */
+router.post('/register', async (req, res, next) => {
+
+  try {
+    let {username}= req.body
+    let token =jwt.sign({username},SECRET_KEY)
+    User.updateLoginTimestamp(username);
+
+    return res.json({token});
+  } catch(e){
+    return next(e)
+  }
+})
 
 module.exports = router;
